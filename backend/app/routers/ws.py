@@ -26,7 +26,7 @@ import json
 import structlog
 from fastapi import APIRouter, Depends, WebSocket, WebSocketDisconnect
 
-from app.db.supabase_client import get_show_topology
+from app.db.mongodb_client import get_show_topology
 from app.middleware.auth import AuthenticatedAdmin, ws_auth
 from app.redis_client import get_redis
 
@@ -92,4 +92,4 @@ async def show_websocket(
     finally:
         forwarder_task.cancel()
         await pubsub.unsubscribe(channel)
-        await pubsub.aclose()
+        await pubsub.close()

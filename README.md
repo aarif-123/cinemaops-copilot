@@ -7,34 +7,38 @@ An AI-powered, real-time theater operations control system. Accepts natural-lang
 ## Architecture
 
 ```
-Admin Browser (TypeScript + Vite)
+Admin Operator Console (React + TypeScript + Vite)
   │
-  ├── ChatPanel   → POST /api/v1/agent/chat
-  ├── HitlModal   → POST /api/v1/agent/resume
-  └── SeatMap     ← WebSocket /ws/show/{id}
+  ├── Admin login → POST /api/v1/auth/login
+  ├── Copilot     → POST /api/v1/agent/chat
+  ├── Approval    → POST /api/v1/agent/resume
+  └── Interactive seat map ← REST snapshot + WebSocket /ws/show/{id}
 
 FastAPI Backend (Python 3.12)
   └── LangGraph StateGraph
-        intent_parser  (Groq Llama 3.3 70B — ReAct loop)
+        intent_parser  (role-scoped Groq Llama 3.3 70B — ReAct loop)
              ↓
-        hitl_gate      (NodeInterrupt — graph pauses, state → Postgres)
+        hitl_gate      (NodeInterrupt — graph pauses, state → MongoDB)
              ↓  (on admin approval)
-        commit         (atomic Postgres RPC via TransactionCoordinator)
+        commit         (atomic MongoDB transaction via TransactionCoordinator)
              ↓
         broadcast      (RFC 6902 JSON Patch → Redis Pub/Sub → WebSocket)
 
 Infrastructure
-  ├── Supabase (PostgreSQL 16) — bookings, audit journal, LangGraph checkpoints
+  ├── MongoDB Atlas — seat allocations, audit journal, LangGraph checkpoints
   └── Redis (Upstash)         — seat checkout locks, relocation holds, Pub/Sub
 ```
 
 ### Key Design Decisions
 
 - **The LLM cannot write to the database.** The tool registry exposes 3 read-only tools and 1 plan-only tool. No write tool exists.
-- **HITL gate uses `NodeInterrupt`**, not a conditional edge — full graph state is persisted to Postgres. Any pod can resume a paused workflow.
+- **The agent is an operations controller, not a general chatbot.** It handles show incidents, occupancy, seat impact, and relocation planning. Out-of-role requests are declined.
+- **Interactive seat map.** Operators can select seats to inspect current status, tier, and booking assignment. Selection is informational; it does not mutate live allocations.
+- **Authentication is separate from show selection.** Admins sign in with email/password to obtain a short-lived JWT, then connect to an actual show ID.
+- **HITL gate uses `NodeInterrupt`**, not a conditional edge — full graph state is persisted to MongoDB. Any pod can resume a paused workflow.
 - **Spatial Adjacency Solver** is a deterministic Bin-Packing + 1D Sliding Window algorithm. The LLM asks the solver; the solver's answer is ground truth.
 - **Redlock-compatible seat locking** via Redis `SET NX PX` with a Lua-script release guard — prevents stale lock deletion across pods.
-- **Append-only audit journal** — Postgres `NO DELETE` rule; rollback writes a compensating entry, never modifies the original.
+- **Append-only audit journal** — rollback writes a compensating entry and marks the original, never deletes audit history.
 
 ---
 
@@ -42,11 +46,11 @@ Infrastructure
 
 | Layer | Technology |
 |---|---|
-| Agent orchestration | LangGraph 0.2.52 + `langgraph-checkpoint-postgres` |
+| Agent orchestration | LangGraph 0.2.52 + `langgraph-checkpoint-mongodb` |
 | LLM | Groq Cloud — Llama 3.3 70B |
 | Web framework | FastAPI 0.115.5 + Uvicorn 0.32.0 |
-| Database | Supabase (PostgreSQL 16) via `asyncpg` |
-| Caching / locking | Redis 5.2.0 (Redlock-compatible) |
+| Database | MongoDB Atlas via Motor/PyMongo |
+| Caching / locking | Redis 4.6.0 (Redlock-compatible; required by Pottery 3.0.0) |
 | Auth | JWT HS256 via `python-jose` |
 | Config | `pydantic-settings` (fail-fast env validation) |
 | Logging | `structlog` (structured JSON) |
@@ -77,9 +81,7 @@ cinemaops/
 │   │   │   ├── transaction_svc.py    # Atomic mutation orchestrator
 │   │   │   └── sdui_publisher.py     # RFC 6902 JSON Patch publisher
 │   │   ├── db/
-│   │   │   ├── supabase_client.py
-│   │   │   └── migrations/
-│   │   │       └── 001_initial.sql   # Full schema + stored procedures
+│   │   │   └── mongodb_client.py     # Queries, transactions, indexes
 │   │   ├── routers/
 │   │   │   ├── agent.py   # /api/v1/agent/* endpoints
 │   │   │   ├── seats.py   # /api/v1/seats/* endpoints
@@ -118,7 +120,7 @@ cinemaops/
 ### Prerequisites
 - Python 3.12+
 - Node.js 20+
-- A Supabase project (for Postgres + service key)
+- A MongoDB Atlas cluster (a replica set is required for transactions)
 - A Redis instance (Upstash free tier works)
 - A Groq Cloud API key
 
@@ -137,10 +139,8 @@ pip install -e ".[dev]"
 
 # Configure environment
 cp .env.example .env
-# Edit .env with your Supabase URL, service key, Redis URL, Groq key, JWT secret
-
-# Run the Supabase migration
-# Paste backend/app/db/migrations/001_initial.sql into Supabase SQL Editor > Run
+# Edit .env with your MongoDB URI/database, Redis URL, Groq key, and JWT secret
+# ALLOWED_ORIGINS must be a JSON array, for example ["http://localhost:5173"]
 
 # Start the server
 uvicorn app.main:app --reload
@@ -179,6 +179,7 @@ pytest tests/ -v
 | `GET` | `/api/v1/agent/audit` | Operational audit log |
 | `WS` | `/ws/show/{show_id}` | Real-time seat map updates |
 | `GET` | `/health` | Health check |
+| `POST` | `/api/v1/auth/login` | Exchange admin email/password for a JWT |
 
 ---
 
@@ -191,8 +192,8 @@ pytest tests/ -v
 | No party split | Sliding window must fit entire party |
 | Per-voucher fiscal cap | `validate_fiscal_guardrails()` |
 | Daily budget cap | `validate_fiscal_guardrails()` |
-| No double-booking | `UNIQUE(show_id, seat_id)` in Postgres |
-| Atomic rollback | Compensating journal entry + stored procedure |
+| No double-booking | Unique MongoDB index on `(show_id, seat_id)` |
+| Atomic rollback | MongoDB transaction + compensating journal entry |
 | Admin approval required | LangGraph `NodeInterrupt` — cannot be bypassed |
 
 ---
@@ -200,3 +201,4 @@ pytest tests/ -v
 ## License
 
 MIT
+

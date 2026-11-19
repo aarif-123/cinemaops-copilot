@@ -5,7 +5,7 @@ Node topology:
     intent_parser ──> hitl_gate ──┬──(approved)──> commit ──> broadcast ──> END
                                   └──(rejected)──> END
 
-The graph uses PostgresSaver for checkpoint persistence (Supabase Postgres).
+The graph uses MongoDBSaver for checkpoint persistence.
 This allows:
   - Any pod to resume a paused graph after admin approval.
   - Full replay audit of every execution step.
@@ -17,11 +17,10 @@ catching missing node wires before a user request ever arrives.
 
 from __future__ import annotations
 
-import os
 from functools import lru_cache
 
 import structlog
-from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
+from langgraph.checkpoint.mongodb.aio import AsyncMongoDBSaver
 from langgraph.graph import END, StateGraph
 
 from app.agent.nodes.broadcast_node import broadcast_node
@@ -101,15 +100,15 @@ def build_graph() -> StateGraph:
     return builder
 
 
-async def get_compiled_graph(conn_string: str):
+async def get_compiled_graph(conn_string: str, database_name: str):
     """
-    Compile the graph with AsyncPostgresSaver for checkpoint persistence.
+    Compile the graph with AsyncMongoDBSaver for checkpoint persistence.
     Called once during application startup lifespan.
     """
-    checkpointer = AsyncPostgresSaver.from_conn_string(conn_string)
-    await checkpointer.setup()  # Creates LangGraph checkpoint tables if not present
+    checkpointer_context = AsyncMongoDBSaver.from_conn_string(conn_string, database_name)
+    checkpointer = await checkpointer_context.__aenter__()
 
     graph = build_graph().compile(checkpointer=checkpointer, interrupt_before=["hitl_gate"])
 
     logger.info("langgraph_compiled", nodes=list(graph.nodes.keys()))
-    return graph, checkpointer
+    return graph, checkpointer_context

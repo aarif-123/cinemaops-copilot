@@ -21,6 +21,7 @@ export interface UseWebSocketResult {
   connected: boolean;
   version: number;
   error: string | null;
+  reconnect: () => void;
 }
 
 export function useWebSocket(showId: string, token: string): UseWebSocketResult {
@@ -33,6 +34,7 @@ export function useWebSocket(showId: string, token: string): UseWebSocketResult 
   const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pingTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const attemptRef = useRef(0);
+  const shouldReconnectRef = useRef(true);
 
   const connect = useCallback(() => {
     if (!showId || !token) return;
@@ -73,7 +75,7 @@ export function useWebSocket(showId: string, token: string): UseWebSocketResult 
     ws.onclose = () => {
       setConnected(false);
       if (pingTimerRef.current) clearInterval(pingTimerRef.current);
-      scheduleReconnect();
+      if (shouldReconnectRef.current) scheduleReconnect();
     };
 
     ws.onerror = () => {
@@ -85,15 +87,31 @@ export function useWebSocket(showId: string, token: string): UseWebSocketResult 
     setAllocations((prev) => {
       let next = [...prev];
       for (const patch of patches) {
-        if (patch.op === 'replace' && typeof patch.path === 'string') {
-          // path: /seats/{seat_id}
-          const seatId = patch.path.split('/seats/')[1];
-          if (!seatId) continue;
-          next = next.map((alloc) =>
-            alloc.seat_id === seatId
-              ? { ...alloc, ...(patch.value as Partial<SeatAllocation>) }
-              : alloc,
-          );
+        if (typeof patch.path !== 'string' || !patch.path.startsWith('/seats/')) continue;
+        const seatId = patch.path.slice('/seats/'.length);
+        if (!seatId || seatId.includes('/')) continue;
+
+        switch (patch.op) {
+          case 'replace':
+            next = next.map((alloc) =>
+              alloc.seat_id === seatId
+                ? { ...alloc, ...(patch.value as Partial<SeatAllocation>) }
+                : alloc,
+            );
+            break;
+          case 'add':
+            if (!next.some((alloc) => alloc.seat_id === seatId)) {
+              next.push(
+                patch.value as unknown as SeatAllocation,
+              );
+            }
+            break;
+          case 'remove':
+            next = next.filter((alloc) => alloc.seat_id !== seatId);
+            break;
+          default:
+            // move, copy, test are not used by the seat map stream
+            break;
         }
       }
       return next;
@@ -109,14 +127,29 @@ export function useWebSocket(showId: string, token: string): UseWebSocketResult 
     reconnectTimerRef.current = setTimeout(() => connect(), delay);
   }, [connect]);
 
+  // Manual reconnect — clears backoff and reconnects immediately
+  const reconnect = useCallback(() => {
+    attemptRef.current = 0;
+    if (reconnectTimerRef.current) clearTimeout(reconnectTimerRef.current);
+    if (wsRef.current) {
+      wsRef.current.close();
+    }
+    connect();
+  }, [connect]);
+
   useEffect(() => {
+    shouldReconnectRef.current = true;
+    setAllocations([]);
+    setVersion(0);
+    setError(null);
     connect();
     return () => {
+      shouldReconnectRef.current = false;
       wsRef.current?.close();
       if (reconnectTimerRef.current) clearTimeout(reconnectTimerRef.current);
       if (pingTimerRef.current) clearInterval(pingTimerRef.current);
     };
   }, [connect]);
 
-  return { allocations, connected, version, error };
+  return { allocations, connected, version, error, reconnect };
 }

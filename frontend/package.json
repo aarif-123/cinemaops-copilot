@@ -9,12 +9,16 @@
     "preview": "vite preview"
   },
   "devDependencies": {
+    "@types/react": "^19.1.12",
+    "@types/react-dom": "^19.1.9",
     "typescript": "~6.0.3",
     "vite": "^8.3.4"
   },
   "dependencies": {
     "@types/node": "^26.6.5",
     "axios": "^1.20.0",
-    "fast-json-patch": "^3.1.1"
+    "fast-json-patch": "^3.1.1",
+    "react": "^19.1.1",
+    "react-dom": "^19.1.1"
   }
 }

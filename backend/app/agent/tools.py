@@ -24,7 +24,7 @@ from typing import Any
 import structlog
 from langchain_core.tools import tool
 
-from app.db.supabase_client import (
+from app.db.mongodb_client import (
     get_occupied_seats,
     get_occupancy_telemetry,
     get_show_topology,

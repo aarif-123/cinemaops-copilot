@@ -106,7 +106,7 @@ class BookingRelocation(BaseModel):
         return self.target_tier.rank >= self.source_tier.rank
 
     def to_rpc_dict(self) -> dict[str, Any]:
-        """Serialise for the Postgres RPC payload."""
+        """Serialize for the persistence transaction payload."""
         return {
             "booking_id": self.booking_id,
             "old_seat_ids": self.source_seat_ids,

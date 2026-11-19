@@ -138,6 +138,13 @@ export interface AgentChatResponse {
   execution_result?: Record<string, unknown>;
 }
 
+export interface AgentResumeResponse {
+  thread_id: string;
+  status: 'committed' | 'error';
+  message: string;
+  execution_result?: Record<string, unknown>;
+}
+
 export interface AuditEntry {
   id: string;
   timestamp: string;
@@ -146,4 +153,23 @@ export interface AuditEntry {
   prompt_intent: string;
   financial_delta_paisa: number;
   is_rolled_back: boolean;
+}
+
+// ─── Occupancy ────────────────────────────────────────────────────────────────
+
+export interface OccupancyResponse {
+  show_id: string;
+  total_seats: number;
+  booked: number;
+  available: number;
+  occupancy_pct: number;
+}
+
+// ─── Agent status ─────────────────────────────────────────────────────────────
+
+export interface AgentStatusResponse {
+  thread_id: string;
+  next_nodes: string[];
+  status: 'awaiting_approval' | 'completed';
+  values: Record<string, unknown>;
 }

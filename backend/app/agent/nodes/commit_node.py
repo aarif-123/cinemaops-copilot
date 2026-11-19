@@ -5,7 +5,7 @@ This node only executes after admin_approval_granted=True.
 It delegates entirely to TransactionCoordinator, which:
   1. Validates fiscal guardrails
   2. Acquires Redlock holds on target seats
-  3. Calls Postgres RPC (atomic)
+  3. Calls the MongoDB transaction (atomic)
   4. Releases locks
   5. Returns journal_id for the audit trail
 

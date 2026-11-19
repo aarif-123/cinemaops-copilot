@@ -237,7 +237,7 @@ class SpatialAdjacencySolver:
 
 def build_layout_from_raw(raw_allocations: list[dict]) -> list[SeatNode]:
     """
-    Convert raw Supabase allocation records into SeatNode objects.
+    Convert raw MongoDB allocation records into SeatNode objects.
     Filters out inactive seats silently (they should never appear in allocations).
     """
     nodes: list[SeatNode] = []

@@ -39,6 +39,6 @@ async def close_redis() -> None:
     """Gracefully close the Redis connection on app shutdown."""
     global _redis
     if _redis is not None:
-        await _redis.aclose()
+        await _redis.close()
         _redis = None
         logger.info("redis_connection_closed")

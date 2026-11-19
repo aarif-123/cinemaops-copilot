@@ -43,7 +43,7 @@ class CinemaOpsState(TypedDict):
     # ── HITL gate ─────────────────────────────────────────────────────────────
     admin_approval_granted: bool
     admin_signature: Optional[str]
-    checkpoint_id: Optional[str]
+    approval_checkpoint_id: Optional[str]
 
     # ── Execution results (set by commit_node) ────────────────────────────────
     execution_result: Optional[dict[str, Any]]
@@ -82,7 +82,7 @@ def initial_state(
         compiled_diff=None,
         admin_approval_granted=False,
         admin_signature=None,
-        checkpoint_id=None,
+        approval_checkpoint_id=None,
         execution_result=None,
         sdui_version=1,
         error_trace=None,

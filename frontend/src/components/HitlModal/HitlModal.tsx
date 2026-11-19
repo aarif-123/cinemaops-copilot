@@ -172,7 +172,7 @@ const HitlModal: React.FC<HitlModalProps> = ({ payload, allocations, session, ad
           <button
             id="hitl-approve-btn"
             className="btn btn--success"
-            onClick={void handleApprove}
+            onClick={() => void handleApprove()}
             disabled={confirming}
             style={{ minWidth: 200 }}
           >

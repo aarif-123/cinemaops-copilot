@@ -4,7 +4,7 @@ Distributed Lock Manager — Redlock-based seat lease fencing.
 Prevents race conditions between the agent's relocation plan and concurrent
 customer checkout sessions claiming the same target seats.
 
-Why Redlock over Postgres advisory locks:
+Why Redlock instead of database advisory locks:
     - Connection-agnostic: any pod can acquire/release without a shared DB conn.
     - TTL-based auto-expiry: crashed pods never leave orphan locks.
     - Sub-millisecond evaluation: Redis is in-memory, not disk-I/O bound.

@@ -4,11 +4,11 @@ FastAPI application entry point.
 Startup sequence:
   1. Validate all settings (fail-fast on missing env vars)
   2. Verify Redis connectivity
-  3. Compile the LangGraph StateGraph with PostgresSaver
+  3. Compile the LangGraph StateGraph with MongoDB checkpoint persistence
   4. Mount all routers
 
 Shutdown sequence:
-  1. Close async PostgresSaver connection
+  1. Close MongoDB checkpoint and database connections
   2. Close Redis async connection
 """
 
@@ -24,8 +24,9 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.agent.graph import get_compiled_graph
 from app.config import get_settings
+from app.db.mongodb_client import close_mongodb, ensure_indexes
 from app.redis_client import close_redis, get_redis
-from app.routers import agent, seats, ws
+from app.routers import agent, auth, seats, ws
 
 # Configure structured logging
 structlog.configure(
@@ -40,20 +41,19 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     settings = get_settings()
     logger.info("startup_begin", env=settings.app_env)
 
-    # 1. Verify Redis
+    # 1. Verify MongoDB and create query-critical indexes
+    await ensure_indexes()
+    logger.info("mongodb_ready")
+
+    # 2. Verify Redis
     await get_redis()
     logger.info("redis_ready")
 
-    # 2. Compile LangGraph graph with Postgres checkpointer
-    # Build connection string from Supabase URL + service key
-    # Supabase provides a direct Postgres connection via the project URL
-    pg_conn = (
-        f"postgresql+asyncpg://postgres:{settings.supabase_service_key}"
-        f"@db.{settings.supabase_url.replace('https://', '').split('.')[0]}"
-        f".supabase.co:5432/postgres"
+    # 3. Compile LangGraph graph with MongoDB checkpoint persistence
+    graph, checkpointer = await get_compiled_graph(
+        settings.mongodb_uri,
+        settings.mongodb_database,
     )
-
-    graph, checkpointer = await get_compiled_graph(pg_conn)
     app.state.graph = graph
     app.state.checkpointer = checkpointer
     logger.info("langgraph_ready")
@@ -64,8 +64,9 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     # Teardown
     logger.info("shutdown_begin")
     await close_redis()
+    await close_mongodb()
     if hasattr(app.state, "checkpointer") and app.state.checkpointer:
-        await app.state.checkpointer.conn.close()
+        await app.state.checkpointer.__aexit__(None, None, None)
     logger.info("shutdown_complete")
 
 
@@ -95,6 +96,7 @@ def create_app() -> FastAPI:
 
     # Mount routers
     app.include_router(agent.router)
+    app.include_router(auth.router)
     app.include_router(seats.router)
     app.include_router(ws.router)
 

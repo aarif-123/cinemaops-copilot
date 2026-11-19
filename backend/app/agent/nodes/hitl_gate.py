@@ -3,8 +3,8 @@ HITL Gate Node — the LangGraph interrupt() checkpoint.
 
 This node is the architectural enforcement of Guardrail 3.
 It fires NodeInterrupt when a relocation plan exists but has not been
-approved by an admin. The entire graph state is persisted to Postgres
-by the PostgresSaver checkpointer, allowing any pod to resume it later.
+approved by an admin. The entire graph state is persisted to MongoDB
+by the MongoDB checkpointer, allowing any pod to resume it later.
 
 Key design choices:
     - Uses LangGraph's NodeInterrupt (not a conditional edge) so that the
@@ -72,7 +72,7 @@ async def hitl_gate_node(state: CinemaOpsState) -> dict[str, Any]:
                 "✓ All target seats verified free of checkout locks",
                 f"✓ Compensation ₹{plan.get('total_compensation_paisa', 0) / 100:.0f} within daily budget",
             ],
-            "checkpoint_id": state.get("checkpoint_id"),
+            "checkpoint_id": state.get("approval_checkpoint_id"),
             "thread_id": state.get("thread_id"),
         }
     )

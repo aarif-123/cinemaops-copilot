@@ -21,9 +21,9 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
-    # ── Supabase ──────────────────────────────────────────────────────────────
-    supabase_url: str = Field(..., description="Supabase project URL")
-    supabase_service_key: str = Field(..., description="Supabase service-role key (bypasses RLS)")
+    # ── MongoDB ───────────────────────────────────────────────────────────────
+    mongodb_uri: str = Field(..., description="MongoDB connection string")
+    mongodb_database: str = Field("cinemaops", min_length=1)
 
     # ── Redis ─────────────────────────────────────────────────────────────────
     redis_url: str = Field(..., description="Redis connection URL (redis:// or rediss://)")
@@ -36,6 +36,8 @@ class Settings(BaseSettings):
     jwt_secret: str = Field(..., min_length=32, description="HS256 signing secret (≥32 chars)")
     jwt_algorithm: str = Field("HS256")
     jwt_expire_minutes: int = Field(480, ge=1, le=1440)
+    admin_email: str = Field(..., min_length=3)
+    admin_password_hash: str = Field(..., min_length=32)
 
     # ── App ───────────────────────────────────────────────────────────────────
     app_env: Literal["development", "production"] = Field("development")
@@ -60,12 +62,12 @@ class Settings(BaseSettings):
             return [o.strip() for o in v.split(",") if o.strip()]
         return v
 
-    @field_validator("supabase_url")
+    @field_validator("mongodb_uri")
     @classmethod
-    def validate_supabase_url(cls, v: str) -> str:
-        if not v.startswith("https://"):
-            raise ValueError("SUPABASE_URL must start with https://")
-        return v.rstrip("/")
+    def validate_mongodb_uri(cls, v: str) -> str:
+        if not v.startswith(("mongodb://", "mongodb+srv://")):
+            raise ValueError("MONGODB_URI must start with mongodb:// or mongodb+srv://")
+        return v
 
     @property
     def is_production(self) -> bool:

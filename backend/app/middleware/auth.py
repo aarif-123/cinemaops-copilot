@@ -10,6 +10,9 @@ WebSocket connections are verified via a query-param token.
 
 from __future__ import annotations
 
+import hashlib
+import hmac
+import secrets
 from typing import Optional
 
 import structlog
@@ -22,6 +25,30 @@ from app.config import get_settings
 logger = structlog.get_logger(__name__)
 
 _bearer = HTTPBearer(auto_error=False)
+
+
+def hash_password(password: str) -> str:
+    """Create a portable PBKDF2-SHA256 password hash for environment storage."""
+    iterations = 310_000
+    salt = secrets.token_bytes(16)
+    digest = hashlib.pbkdf2_hmac("sha256", password.encode(), salt, iterations)
+    return f"pbkdf2_sha256${iterations}${salt.hex()}${digest.hex()}"
+
+
+def verify_password(password: str, encoded_hash: str) -> bool:
+    """Verify a PBKDF2-SHA256 password hash without revealing timing information."""
+    try:
+        algorithm, iterations_text, salt_hex, digest_hex = encoded_hash.split("$")
+        if algorithm != "pbkdf2_sha256":
+            return False
+        iterations = int(iterations_text)
+        expected = bytes.fromhex(digest_hex)
+        actual = hashlib.pbkdf2_hmac(
+            "sha256", password.encode(), bytes.fromhex(salt_hex), iterations
+        )
+    except (ValueError, TypeError):
+        return False
+    return hmac.compare_digest(actual, expected)
 
 
 class AuthenticatedAdmin:

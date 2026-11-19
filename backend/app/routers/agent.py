@@ -25,7 +25,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, status
 from langgraph.errors import NodeInterrupt
 
 from app.agent.state import initial_state
-from app.db.supabase_client import get_audit_log, rpc_rollback_journal
+from app.db.mongodb_client import get_audit_log, rollback_journal
 from app.middleware.auth import AuthenticatedAdmin, require_admin
 from app.models.api import (
     AgentChatRequest,
@@ -215,5 +215,5 @@ async def undo_action(
     Rollback a previous journal entry using the immutable audit snapshot.
     Guardrail 5: Atomic State Rollback.
     """
-    result = await rpc_rollback_journal(body.journal_id, admin.admin_id)
+    result = await rollback_journal(body.journal_id, admin.admin_id)
     return {"status": "rolled_back", **result}

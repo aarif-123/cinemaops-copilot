@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException
 
-from app.db.supabase_client import get_occupancy_telemetry, get_show_topology
+from app.db.mongodb_client import get_occupancy_telemetry, get_show_topology
 from app.middleware.auth import AuthenticatedAdmin, require_admin
 from app.models.api import SeatMapResponse
 

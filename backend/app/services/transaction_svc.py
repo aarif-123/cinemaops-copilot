@@ -1,14 +1,14 @@
 """
 Transaction Coordinator — atomic mutation orchestrator.
 
-Wraps the Postgres stored procedure calls so that:
+Wraps the MongoDB transaction calls so that:
   1. Redlock holds are acquired before the DB write.
   2. The DB write is atomic (entire relocation or nothing).
   3. Locks are always released in the `finally` block.
   4. The audit journal is written inside the same DB transaction.
 
 The agent graph's commit_node calls ONLY this module — it has no direct
-Supabase client import, preserving the I/O boundary.
+database client import, preserving the I/O boundary.
 """
 
 from __future__ import annotations
@@ -20,7 +20,7 @@ from typing import Any
 import structlog
 
 from app.config import get_settings
-from app.db.supabase_client import rpc_apply_relocation, rpc_rollback_journal
+from app.db.mongodb_client import apply_relocation, rollback_journal
 from app.models.domain import RelocationPlan
 from app.services.lock_manager import get_lock_manager
 
@@ -48,7 +48,7 @@ class TransactionCoordinator:
         Flow:
           1. Collect all target seat IDs across all relocations.
           2. Acquire Redlock holds on target seats.
-          3. Call Postgres RPC (atomic: quarantine + relocate + audit).
+          3. Run the MongoDB transaction (atomic: quarantine + relocate + audit).
           4. Release locks (always, even on error).
 
         Returns: dict with journal_id and financial summary.
@@ -78,7 +78,7 @@ class TransactionCoordinator:
                 financial_delta_paisa=plan.total_compensation_paisa,
             )
 
-            rpc_payload = {
+            transaction_payload = {
                 "p_show_id": show_id,
                 "p_quarantine_ids": plan.quarantine_seat_ids,
                 "p_relocations": [r.to_rpc_dict() for r in plan.relocations],
@@ -89,7 +89,7 @@ class TransactionCoordinator:
                 "p_financial_delta": plan.total_compensation_paisa,
             }
 
-            result = await rpc_apply_relocation(rpc_payload)
+            result = await apply_relocation(transaction_payload)
 
             logger.info(
                 "relocation_committed",
@@ -112,7 +112,7 @@ class TransactionCoordinator:
         Guardrail 5 (Atomic State Rollback).
         """
         logger.info("rollback_initiated", journal_id=journal_id, admin_id=admin_id)
-        result = await rpc_rollback_journal(journal_id, admin_id)
+        result = await rollback_journal(journal_id, admin_id)
         logger.info("rollback_committed", undo_journal_id=result.get("undo_journal_id"))
         return result
 
